@@ -1,18 +1,3 @@
-{
-  "name": "generador-planificaciones",
-  "version": "1.0.0",
-  "private": true,
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.0"
-  },
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  }
-}
+# Copia este archivo como .env.local y pega tu API key de Google AI Studio
+# Consíguela GRATIS en: https://aistudio.google.com/apikey
+VITE_GEMINI_API_KEY=AIzaSy-AQUI-VA-TU-API-KEY
