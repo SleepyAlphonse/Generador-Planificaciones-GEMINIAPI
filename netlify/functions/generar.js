@@ -5,30 +5,38 @@ export default async (request) => {
 
   try {
     const { prompt } = await request.json();
-    const apiKey = process.env.VITE_GEMINI_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 4000 }
-        })
-      }
-    );
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
 
     const data = await res.json();
 
     if (!res.ok) {
-      return new Response(JSON.stringify({ error: data.error?.message || "Error de Gemini" }), {
+      return new Response(JSON.stringify({ error: data.error?.message || "Error de API" }), {
         status: res.status,
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    return new Response(JSON.stringify(data), {
+    // Adapt Anthropic response to the format App.jsx expects
+    const txt = data.content?.[0]?.text || "";
+    const adapted = {
+      candidates: [{ content: { parts: [{ text: txt }] } }]
+    };
+
+    return new Response(JSON.stringify(adapted), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });
