@@ -298,7 +298,7 @@ Responde SOLO con JSON válido sin markdown ni backticks:
 {"titulo":"título creativo","descripcion":"2 oraciones","oa_texto":"OA completo aplicado","oat_texto":"OAT completo aplicado","principios":"lista separada por comas","inicio":"inicio detallado 3-4 oraciones","desarrollo":"desarrollo detallado 5-6 oraciones","cierre":"cierre detallado 3-4 oraciones","recursos":"materiales separados por comas","preguntas":["p1","p2","p3"],"focos":["f1","f2"],"evaluacion":"proceso evaluativo"${dua?',"dua_compromiso":"...","dua_representacion":"...","dua_accion":"..."':''}}`;
 
     try {
-      const res = await fetch("/api/generar", {
+      const res = await fetch("/.netlify/functions/generar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt })
