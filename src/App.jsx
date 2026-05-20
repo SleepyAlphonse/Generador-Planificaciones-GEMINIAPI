@@ -298,15 +298,24 @@ Responde SOLO con JSON válido sin markdown ni backticks:
 {"titulo":"título creativo","descripcion":"2 oraciones","oa_texto":"OA completo aplicado","oat_texto":"OAT completo aplicado","principios":"lista separada por comas","inicio":"inicio detallado 3-4 oraciones","desarrollo":"desarrollo detallado 5-6 oraciones","cierre":"cierre detallado 3-4 oraciones","recursos":"materiales separados por comas","preguntas":["p1","p2","p3"],"focos":["f1","f2"],"evaluacion":"proceso evaluativo"${dua?',"dua_compromiso":"...","dua_representacion":"...","dua_accion":"..."':''}}`;
 
     try {
-      const res = await fetch("/.netlify/functions/generar", {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt })
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [{ role: "user", content: prompt }]
+        })
       });
       if (!res.ok) throw new Error("Error HTTP " + res.status);
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      const txt = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      if (data.error) throw new Error(data.error.message);
+      const txt = data.content?.[0]?.text || "";
       if (!txt) throw new Error("La IA no devolvió respuesta.");
       const start = txt.indexOf("{");
       const end = txt.lastIndexOf("}");
