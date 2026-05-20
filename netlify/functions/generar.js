@@ -1,10 +1,12 @@
-export default async (request) => {
-  if (request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+const fetch = require("node-fetch");
+
+exports.handler = async function(event) {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method not allowed" };
   }
 
   try {
-    const { prompt } = await request.json();
+    const { prompt } = JSON.parse(event.body);
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -24,29 +26,27 @@ export default async (request) => {
     const data = await res.json();
 
     if (!res.ok) {
-      return new Response(JSON.stringify({ error: data.error?.message || "Error de API" }), {
-        status: res.status,
-        headers: { "Content-Type": "application/json" }
-      });
+      return {
+        statusCode: res.status,
+        body: JSON.stringify({ error: data.error?.message || "Error de API" })
+      };
     }
 
-    // Adapt Anthropic response to the format App.jsx expects
     const txt = data.content?.[0]?.text || "";
     const adapted = {
       candidates: [{ content: { parts: [{ text: txt }] } }]
     };
 
-    return new Response(JSON.stringify(adapted), {
-      status: 200,
-      headers: { "Content-Type": "application/json" }
-    });
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adapted)
+    };
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: e.message })
+    };
   }
 };
-
-export const config = { path: "/api/generar" };
