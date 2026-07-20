@@ -207,7 +207,17 @@ function printPlan(plan, meta) {
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export default function App() {
-  const [view, setView] = useState("setup"); // setup | gen | output
+  const [view, setView] = useState("setup"); // setup | lobby | gen | output | ideas | ideasList
+
+  // ── Generador de Ideas (Experiencias y Secuencias) ──
+  const [ideaModo, setIdeaModo] = useState("tematica"); // tematica | libre
+  const [ideaTematica, setIdeaTematica] = useState("");
+  const [ideaNivel, setIdeaNivel] = useState("medio");
+  const [ideaSecuenciada, setIdeaSecuenciada] = useState(false);
+  const [ideaDias, setIdeaDias] = useState(3);
+  const [ideasGeneradas, setIdeasGeneradas] = useState([]); // [{titulo, desarrollo}]
+  const [ideasLoading, setIdeasLoading] = useState(false);
+  const [ideasError, setIdeasError] = useState("");
   const [estabName, setEstabName] = useState("");
   const [estabRegion, setEstabRegion] = useState("");
   const [estabDone, setEstabDone] = useState(false);
@@ -263,6 +273,90 @@ export default function App() {
     curso: cursoName+(cursoNivel?" — "+NIVELES[cursoNivel]:""),
     nivel: NIVELES[nivel]||nivel, fecha, zona, duracion, dua
   });
+
+  // ── Helper: llamada genérica a la API de Claude
+  const callClaude = async (prompt, maxTokens = 4000) => {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    if (!res.ok) throw new Error("Error HTTP " + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const txt = data.content?.[0]?.text || "";
+    if (!txt) throw new Error("La IA no devolvió respuesta.");
+    return txt;
+  };
+
+  // ── API call: generar ideas de experiencias / secuencias
+  const generarIdeas = useCallback(async () => {
+    if (ideaModo === "tematica" && !ideaTematica.trim()) {
+      setIdeasError("Escribe una temática o cambia a Modo Libre.");
+      return;
+    }
+    setIdeasError(""); setIdeasLoading(true); setIdeasGeneradas([]);
+    setView("ideasList");
+
+    const nivelLabel = NIVELES[ideaNivel] || ideaNivel;
+    const tematicaTxt = ideaModo === "libre"
+      ? "MODO LIBRE: tú eliges una temática apropiada, realista y significativa para el nivel, propia de la realidad de un jardín infantil chileno."
+      : `Temática entregada por la educadora: "${ideaTematica}".`;
+
+    const secuenciaTxt = ideaSecuenciada
+      ? `Cada idea debe ser una EXPERIENCIA SECUENCIADA de ${ideaDias} días: un hilo conductor progresivo donde cada día aborda un aspecto distinto y complementario del tema (por ejemplo, para "cepillado de dientes": día 1 las partes de la boca, día 2 los utensilios y el procedimiento, día 3 la importancia del cepillado). En el desarrollo describe brevemente qué se trabaja cada día.`
+      : `Cada idea es una experiencia de aprendizaje independiente de un solo día.`;
+
+    const prompt = `Eres una experta en educación parvularia chilena con profundo conocimiento del BCEP 2018. Tu tarea es proponer ideas de experiencias de aprendizaje creativas, realistas y pertinentes para una educadora de párvulos.
+
+CONTEXTO:
+- Nivel BCEP: ${nivelLabel}
+- ${tematicaTxt}
+- ${secuenciaTxt}
+
+INSTRUCCIONES:
+- Genera EXACTAMENTE 5 ideas DISTINTAS entre sí.
+- Cada idea debe tener un TÍTULO atractivo y pedagógico, y un DESARROLLO breve (2 a 4 oraciones) que describa de qué trata la experiencia${ideaSecuenciada ? ` y cómo se distribuye a lo largo de los ${ideaDias} días` : ""}.
+- Las ideas deben ser apropiadas para la edad del nivel indicado y coherentes con los principios del BCEP (juego, bienestar, protagonismo del niño/a).
+- Usa un lenguaje cálido y claro, propio de la realidad chilena de educación parvularia.
+
+Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura exacta:
+{"ideas":[{"titulo":"...","desarrollo":"..."},{"titulo":"...","desarrollo":"..."},{"titulo":"...","desarrollo":"..."},{"titulo":"...","desarrollo":"..."},{"titulo":"...","desarrollo":"..."}]}`;
+
+    try {
+      const txt = await callClaude(prompt, 3000);
+      const start = txt.indexOf("{");
+      const end = txt.lastIndexOf("}");
+      if (start === -1 || end === -1) throw new Error("No se recibió JSON válido de la IA.");
+      const parsed = JSON.parse(txt.slice(start, end + 1));
+      const lista = (parsed.ideas || []).map(i => ({ titulo: i.titulo || "", desarrollo: i.desarrollo || "" }));
+      if (lista.length === 0) throw new Error("No se generaron ideas.");
+      setIdeasGeneradas(lista);
+    } catch(e) {
+      setIdeasError("Error al generar ideas: " + e.message);
+    }
+    setIdeasLoading(false);
+  }, [ideaModo, ideaTematica, ideaNivel, ideaSecuenciada, ideaDias]);
+
+  // ── Llevar una idea seleccionada al planificador (opción B: día a día)
+  const planificarIdea = (ideaSel) => {
+    // Pre-cargar la idea en el planificador actual
+    setIdea(`${ideaSel.titulo} — ${ideaSel.desarrollo}`);
+    setNivel(ideaNivel);
+    // Reiniciar selección de objetivos para que la educadora los escoja según el día
+    setAmbito(""); setNucleo(""); setOa(""); setOat("");
+    setPlan(null); setError("");
+    setView("gen");
+  };
 
   // ── API call
   const generar = useCallback(async () => {
@@ -425,20 +519,226 @@ Responde SOLO con JSON válido sin markdown ni backticks:
           )}
         </div>
 
-        <button onClick={()=>setView("gen")} disabled={!estabDone}
+        <button onClick={()=>setView("lobby")} disabled={!estabDone}
           style={{width:"100%",padding:"12px",background:estabDone?pink:"var(--color-background-secondary)",color:estabDone?"white":"var(--color-text-tertiary)",border:"none",borderRadius:8,fontSize:15,fontWeight:500,cursor:estabDone?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-          ✦ Ir a generar mi planificación →
+          ✦ Continuar →
         </button>
       </div>
+    </div>
+  );
+
+  // ── RENDER LOBBY ──────────────────────────────────────────────────────────
+  if (view==="lobby") return (
+    <div style={{maxWidth:780,margin:"0 auto",padding:"1.5rem 1rem",fontFamily:"var(--font-sans)"}}>
+      <div style={{textAlign:"center",marginBottom:"2rem"}}>
+        <div style={{fontSize:26,fontWeight:500,color:"var(--color-text-primary)"}}>✦ ¿Qué quieres hacer hoy?</div>
+        <div style={{fontSize:13,color:"var(--color-text-secondary)",marginTop:4}}>{estabName} · elige una opción para comenzar</div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* Botón 1 — Generador de Planificaciones */}
+        <div onClick={()=>setView("gen")}
+          style={{background:"var(--color-background-primary)",border:`1px solid ${pinkBorder}`,borderRadius:14,padding:"1.75rem 1.25rem",cursor:"pointer",textAlign:"center",transition:"all .15s",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}
+          onMouseEnter={e=>{e.currentTarget.style.background=pinkLight;e.currentTarget.style.transform="translateY(-2px)";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="var(--color-background-primary)";e.currentTarget.style.transform="translateY(0)";}}>
+          <div style={{width:60,height:60,borderRadius:16,background:pinkLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30}}>📋</div>
+          <div style={{fontSize:17,fontWeight:600,color:"#72243E"}}>Generador de Planificaciones</div>
+          <div style={{fontSize:13,color:"var(--color-text-secondary)",lineHeight:1.5}}>Crea una planificación completa de una experiencia de aprendizaje, con OA, OAT, evaluación y PDF.</div>
+        </div>
+
+        {/* Botón 2 — Generador de Experiencias y Secuencias */}
+        <div onClick={()=>{setIdeasGeneradas([]);setIdeasError("");setView("ideas");}}
+          style={{background:"var(--color-background-primary)",border:`1px solid ${pinkBorder}`,borderRadius:14,padding:"1.75rem 1.25rem",cursor:"pointer",textAlign:"center",transition:"all .15s",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}
+          onMouseEnter={e=>{e.currentTarget.style.background=pinkLight;e.currentTarget.style.transform="translateY(-2px)";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="var(--color-background-primary)";e.currentTarget.style.transform="translateY(0)";}}>
+          <div style={{width:60,height:60,borderRadius:16,background:pinkLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30}}>💡</div>
+          <div style={{fontSize:17,fontWeight:600,color:"#72243E"}}>Generador de Experiencias y Secuencias</div>
+          <div style={{fontSize:13,color:"var(--color-text-secondary)",lineHeight:1.5}}>¿Sin ideas? Genera propuestas de experiencias (individuales o secuenciadas por días) y planifícalas al instante.</div>
+        </div>
+      </div>
+
+      <div style={{textAlign:"center",marginTop:"1.5rem"}}>
+        <button onClick={()=>setView("setup")}
+          style={{background:"transparent",border:"none",color:"var(--color-text-secondary)",fontSize:13,cursor:"pointer"}}>
+          ← Volver a configuración
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── RENDER GENERADOR DE IDEAS (formulario) ────────────────────────────────
+  if (view==="ideas") return (
+    <div style={{maxWidth:780,margin:"0 auto",padding:"1.5rem 1rem",fontFamily:"var(--font-sans)"}}>
+      <div style={{textAlign:"center",marginBottom:"1.25rem"}}>
+        <div style={{fontSize:22,fontWeight:500}}>💡 Generador de Experiencias y Secuencias</div>
+        <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:3}}>BCEP 2018 · {estabName}</div>
+      </div>
+
+      <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"1.25rem"}}>
+
+        {/* Modo: temática propia vs libre */}
+        <div style={{marginBottom:"1rem"}}>
+          <div style={{fontSize:12,fontWeight:500,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>¿Cómo quieres empezar?</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div onClick={()=>setIdeaModo("tematica")}
+              style={{border:`1px solid ${ideaModo==="tematica"?pink:"var(--color-border-secondary)"}`,borderRadius:10,padding:12,cursor:"pointer",background:ideaModo==="tematica"?pinkLight:"var(--color-background-primary)"}}>
+              <div style={{fontSize:14,fontWeight:600,color:ideaModo==="tematica"?"#72243E":"var(--color-text-primary)"}}>✏️ Con temática propia</div>
+              <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:2}}>Tú escribes el tema y la IA propone las ideas.</div>
+            </div>
+            <div onClick={()=>setIdeaModo("libre")}
+              style={{border:`1px solid ${ideaModo==="libre"?pink:"var(--color-border-secondary)"}`,borderRadius:10,padding:12,cursor:"pointer",background:ideaModo==="libre"?pinkLight:"var(--color-background-primary)"}}>
+              <div style={{fontSize:14,fontWeight:600,color:ideaModo==="libre"?"#72243E":"var(--color-text-primary)"}}>🎲 Modo libre</div>
+              <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:2}}>La IA inventa todo desde cero según el curso.</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Temática (solo si modo temática) */}
+        {ideaModo==="tematica" && (
+          <div style={{marginBottom:"1rem"}}>
+            <Field label="Temática de la experiencia *" full>
+              <input style={{...inputStyle,fontSize:15}} value={ideaTematica} onChange={e=>setIdeaTematica(e.target.value)}
+                placeholder="Ej: El cepillado de dientes / Los animales de la granja / Las emociones"/>
+            </Field>
+          </div>
+        )}
+
+        {/* Curso / Nivel */}
+        <div style={{marginBottom:"1rem"}}>
+          <div style={{fontSize:12,fontWeight:500,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Curso / Nivel</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {[["medio","Nivel Medio"],["transicion","Transición"],["sala_cuna","Sala Cuna"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setIdeaNivel(v)}
+                style={{padding:"6px 16px",borderRadius:20,fontSize:13,fontWeight:500,cursor:"pointer",border:`0.5px solid ${ideaNivel===v?pink:"var(--color-border-secondary)"}`,background:ideaNivel===v?pink:"transparent",color:ideaNivel===v?"white":"var(--color-text-secondary)"}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Experiencia secuenciada */}
+        <div style={{marginBottom:"1.25rem",borderTop:"0.5px solid var(--color-border-tertiary)",paddingTop:"1rem"}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:14,color:"var(--color-text-primary)",fontWeight:500}}>
+            <input type="checkbox" checked={ideaSecuenciada} onChange={e=>setIdeaSecuenciada(e.target.checked)} style={{width:"auto"}}/>
+            Experiencia secuenciada (varios días con un hilo conductor)
+          </label>
+          {ideaSecuenciada && (
+            <div style={{marginTop:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <span style={{fontSize:13,color:"var(--color-text-secondary)"}}>¿Cuántos días quieres planificar?</span>
+              <div style={{display:"flex",gap:6}}>
+                {[2,3,4,5].map(d=>(
+                  <button key={d} onClick={()=>setIdeaDias(d)}
+                    style={{width:38,height:38,borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",border:`0.5px solid ${ideaDias===d?pink:"var(--color-border-secondary)"}`,background:ideaDias===d?pink:"transparent",color:ideaDias===d?"white":"var(--color-text-secondary)"}}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+              <span style={{fontSize:12,color:"var(--color-text-tertiary)"}}>días</span>
+            </div>
+          )}
+        </div>
+
+        {ideasError && <div style={{color:"#A32D2D",fontSize:13,marginBottom:8,padding:"8px 12px",background:"#FCEBEB",borderRadius:8}}>{ideasError}</div>}
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setView("lobby")}
+            style={{border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",borderRadius:8,padding:"12px 18px",fontSize:14,cursor:"pointer"}}>
+            ← Volver
+          </button>
+          <button onClick={generarIdeas} disabled={ideasLoading}
+            style={{flex:1,padding:"13px",background:ideasLoading?"var(--color-background-secondary)":pink,color:ideasLoading?"var(--color-text-tertiary)":"white",border:"none",borderRadius:8,fontSize:15,fontWeight:500,cursor:ideasLoading?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            {ideasLoading ? "⏳ Generando ideas..." : "💡 Generar 5 ideas con IA"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── RENDER LISTA DE IDEAS GENERADAS ───────────────────────────────────────
+  if (view==="ideasList") return (
+    <div style={{maxWidth:780,margin:"0 auto",padding:"1.5rem 1rem",fontFamily:"var(--font-sans)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem",flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontSize:18,fontWeight:500}}>💡 Ideas generadas</div>
+          <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:2}}>
+            {ideaModo==="libre" ? "Modo libre" : `Temática: ${ideaTematica}`} · {NIVELES[ideaNivel]}
+            {ideaSecuenciada ? ` · Secuencia de ${ideaDias} días` : " · Experiencia individual"}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setView("ideas")}
+            style={{border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer"}}>
+            ← Volver
+          </button>
+          {!ideasLoading && ideasGeneradas.length>0 && (
+            <button onClick={generarIdeas}
+              style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer"}}>
+              ↻ Generar otras
+            </button>
+          )}
+        </div>
+      </div>
+
+      {ideasLoading && (
+        <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"2rem",textAlign:"center"}}>
+          <div style={{fontSize:32,marginBottom:10}}>💡</div>
+          <div style={{fontSize:15,color:"var(--color-text-secondary)"}}>La IA está pensando ideas para ti...</div>
+          <div style={{fontSize:13,color:"var(--color-text-tertiary)",marginTop:5}}>Esto puede tomar unos segundos</div>
+        </div>
+      )}
+
+      {ideasError && !ideasLoading && (
+        <div style={{color:"#A32D2D",padding:"1rem",background:"#FCEBEB",borderRadius:8,fontSize:14,marginBottom:12}}>{ideasError}</div>
+      )}
+
+      {!ideasLoading && ideasGeneradas.length>0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{fontSize:13,color:"var(--color-text-secondary)",background:pinkLight,padding:"10px 14px",borderRadius:8}}>
+            ✨ Puedes <strong>editar</strong> el título o el desarrollo de cualquier idea antes de planificarla. Cuando te guste una, presiona <strong>"Planificar esta idea"</strong>.
+          </div>
+          {ideasGeneradas.map((idea,i)=>(
+            <div key={i} style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"1.1rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:pinkLight,color:"#72243E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:600,flexShrink:0}}>{i+1}</div>
+                <input value={idea.titulo}
+                  onChange={e=>{const n=[...ideasGeneradas];n[i]={...n[i],titulo:e.target.value};setIdeasGeneradas(n);}}
+                  style={{...inputStyle,fontSize:15,fontWeight:600,color:"#72243E",border:"none",background:"transparent",padding:"2px 0"}}/>
+              </div>
+              <textarea value={idea.desarrollo}
+                onChange={e=>{const n=[...ideasGeneradas];n[i]={...n[i],desarrollo:e.target.value};setIdeasGeneradas(n);}}
+                rows={ideaSecuenciada?4:3}
+                style={{...inputStyle,fontSize:13,lineHeight:1.6,resize:"vertical",marginBottom:10}}/>
+              <div style={{display:"flex",justifyContent:"flex-end"}}>
+                <button onClick={()=>planificarIdea(idea)}
+                  style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:14,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                  📋 Planificar esta idea →
+                </button>
+              </div>
+            </div>
+          ))}
+          {ideaSecuenciada && (
+            <div style={{fontSize:12,color:"var(--color-text-tertiary)",textAlign:"center",padding:"4px 0"}}>
+              💡 Al planificar una secuencia, planifica cada día por separado eligiendo los objetivos correspondientes a ese día.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
   // ── RENDER GENERATOR ──────────────────────────────────────────────────────
   if (view==="gen") return (
     <div style={{maxWidth:780,margin:"0 auto",padding:"1.5rem 1rem",fontFamily:"var(--font-sans)"}}>
-      <div style={{textAlign:"center",marginBottom:"1.25rem"}}>
-        <div style={{fontSize:22,fontWeight:500}}>✦ Generador de Planificaciones</div>
-        <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:3}}>BCEP 2018 · {estabName}</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.25rem"}}>
+        <button onClick={()=>setView("lobby")}
+          style={{background:"transparent",border:"0.5px solid var(--color-border-secondary)",color:"var(--color-text-secondary)",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>
+          ← Inicio
+        </button>
+        <div style={{textAlign:"center",flex:1}}>
+          <div style={{fontSize:22,fontWeight:500}}>✦ Generador de Planificaciones</div>
+          <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:3}}>BCEP 2018 · {estabName}</div>
+        </div>
+        <div style={{width:70}}/>
       </div>
       <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"1.25rem"}}>
 
