@@ -514,8 +514,8 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura e
     }
 
     const instruccionObjetivos = (objetivosPersonalizados && objetivosPersonalizados.length > 0)
-      ? `- Usa EXACTAMENTE los objetivos indicados en "OBJETIVOS OBLIGATORIOS POR DÍA". Copia el ámbito, núcleo, OA y OAT tal cual se te entregan, sin inventar ni modificar.`
-      : `- Para CADA día, elige el OA más pertinente ÚNICAMENTE del CATÁLOGO OFICIAL DE OA, y el OAT (objetivo transversal) más pertinente ÚNICAMENTE del CATÁLOGO OFICIAL DE OAT. Copia el ámbito, el núcleo y el texto del OA y del OAT EXACTAMENTE como aparecen en los catálogos. NO inventes objetivos, NO uses objetivos de otros niveles, NO modifiques su redacción.`;
+      ? `- Usa EXACTAMENTE los objetivos indicados en "OBJETIVOS OBLIGATORIOS POR DÍA": para cada día están dados el OA y el OAT. Copia el ámbito, núcleo, OA y OAT tal cual se te entregan, sin inventar ni modificar. Además, redacta el "oa_especificado" adaptando el OA dado al tema del día.`
+      : `- Para CADA día elige DOS objetivos: (a) un OA del CATÁLOGO OFICIAL DE OA (puede ser de cualquier ámbito), y (b) un OAT del CATÁLOGO OFICIAL DE OAT (siempre del ámbito Desarrollo Personal y Social). Copia ambos EXACTAMENTE como aparecen en sus catálogos. NO inventes objetivos, NO uses objetivos de otros niveles, NO modifiques su redacción. AMBOS son obligatorios en todos los días.`;
 
     const prompt = `Eres una experta en educación parvularia chilena con profundo conocimiento del BCEP 2018. Debes crear una PLANIFICACIÓN DE EXPERIENCIA SECUENCIADA completa de ${ideaDias} días, con un hilo conductor progresivo, siguiendo EXACTAMENTE el formato oficial de planificación chilena.
 
@@ -528,8 +528,13 @@ ${bloqueObjetivos}
 INSTRUCCIONES:
 - Crea EXACTAMENTE ${ideaDias} experiencias (una por día), progresivas y conectadas por un hilo conductor.
 ${instruccionObjetivos}
-- Para CADA día, además del OA oficial, redacta un "OA ESPECIFICADO": el mismo OA pero adaptado y contextualizado al tema puntual de ese día (por ejemplo, si el OA oficial dice "Reconocer las principales partes... de su cuerpo" y el día trata sobre la boca, el especificado sería "Reconocer las principales partes... de la boca en situaciones cotidianas y de juego"). Mantén la estructura del OA oficial pero enfócalo en el contenido del día.
-- La columna OBJETIVO DE APRENDIZAJE incluye entonces TRES elementos: el OA oficial (textual del catálogo), el OA especificado (adaptado al día), y el OAT (textual del catálogo de transversales).
+
+⚠️ REGLA CRÍTICA E INNEGOCIABLE SOBRE LA COLUMNA "OBJETIVO DE APRENDIZAJE" ⚠️
+Para CADA UNO de los ${ideaDias} días, la columna de objetivos DEBE contener SIEMPRE estos TRES elementos, sin excepción (si falta alguno, la planificación es inválida):
+  1. "oa": el OA oficial, copiado EXACTAMENTE del catálogo de OA.
+  2. "oa_especificado": el mismo OA pero adaptado al tema puntual del día. Ejemplo real del formato: si el OA oficial es "Reconocer las principales partes, características físicas de su cuerpo y sus funciones en situaciones cotidianas y de juego" y el día trata sobre la boca, el especificado es "Reconocer las principales partes, características físicas de la boca en situaciones cotidianas y de juego". Mantén la redacción del OA oficial y solo enfócala al contenido del día.
+  3. "oat": un Objetivo de Aprendizaje Transversal, copiado EXACTAMENTE del CATÁLOGO OFICIAL DE OAT. El OAT SIEMPRE pertenece al ámbito "Desarrollo Personal y Social". NUNCA dejes este campo vacío. Cada día debe tener su OAT, complementario al OA de ese día.
+
 - Los CONTENIDOS deben especificar las 3 dimensiones: conceptual (saber), procedimental (saber hacer) y actitudinal (saber ser), coherentes con el OA del día. Sé conciso y directo, extrayéndolos del propio OA.
 - Las PROPUESTAS DE EXPERIENCIAS deben ser detalladas y realistas, con Inicio, Desarrollo y Cierre claramente descritos.
 - Las EVALUACIONES deben incluir instrumento de evaluación, foco de evaluación e indicadores de evaluación.
@@ -572,6 +577,20 @@ Genera los ${ideaDias} días completos.`;
       if (start === -1 || end === -1) throw new Error("No se recibió JSON válido de la IA.");
       const parsed = JSON.parse(txt.slice(start, end + 1));
       if (!parsed.dias || parsed.dias.length === 0) throw new Error("No se generaron los días de la secuencia.");
+      // Respaldo: garantizar que cada día tenga OAT (y en modo personalizado, respetar lo elegido)
+      const oatFallback = OAS.desarrollo.nucleos.identidad[ideaNivel] || OAS.desarrollo.nucleos.identidad.medio || [];
+      parsed.dias = parsed.dias.map((d, i) => {
+        const dia = { ...d };
+        if (objetivosPersonalizados && objetivosPersonalizados[i]) {
+          // En modo personalizado, forzar exactamente los objetivos elegidos por la educadora
+          dia.oa = objetivosPersonalizados[i].oa || dia.oa;
+          dia.oat = objetivosPersonalizados[i].oat || dia.oat;
+        }
+        if (!dia.oat || !dia.oat.trim()) {
+          dia.oat = oatFallback[i % Math.max(oatFallback.length, 1)] || oatFallback[0] || "";
+        }
+        return dia;
+      });
       setSecuencia(parsed);
     } catch(e) {
       setSecuenciaError("Error al generar la secuencia: " + e.message);
