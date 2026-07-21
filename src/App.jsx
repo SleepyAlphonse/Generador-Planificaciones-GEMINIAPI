@@ -77,6 +77,18 @@ function catalogoOAporNivel(nivel) {
   return out.trim();
 }
 
+// ── Catálogo de OAT (transversales) por nivel — del ámbito Desarrollo Personal y Social ──
+function catalogoOATporNivel(nivel) {
+  let out = "";
+  const amb = OAS.desarrollo;
+  for (const [, nucData] of Object.entries(amb.nucleos)) {
+    const lista = nucData[nivel] || nucData.medio || [];
+    out += `  Núcleo "${nucData.label}":\n`;
+    lista.forEach(oa => { out += `    - ${oa}\n`; });
+  }
+  return out.trim();
+}
+
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const pink = "#e5608a";
 const pinkLight = "#fbeaf0";
@@ -249,20 +261,24 @@ function printSecuencia(secuencia, meta) {
       <table>
         <thead>
           <tr>
-            <th style="width:11%">Ámbito</th>
-            <th style="width:11%">Núcleo</th>
-            <th style="width:16%">Objetivo de Aprendizaje</th>
-            <th style="width:16%">Contenidos</th>
+            <th style="width:9%">Ámbito</th>
+            <th style="width:9%">Núcleo</th>
+            <th style="width:20%">Objetivo de Aprendizaje</th>
+            <th style="width:14%">Contenidos</th>
             <th style="width:24%">Propuestas de Experiencias de Aprendizaje</th>
             <th style="width:12%">Orientaciones Pedagógicas</th>
-            <th style="width:10%">Evaluaciones</th>
+            <th style="width:12%">Evaluaciones</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>${d.ambito || ""}</td>
             <td>${d.nucleo || ""}</td>
-            <td>${d.oa || ""}</td>
+            <td>
+              <div class="exp-block"><strong>OA:</strong><br>${d.oa || ""}</div>
+              ${d.oa_especificado ? `<div class="exp-block"><strong>OA Especificado:</strong><br>${d.oa_especificado}</div>` : ""}
+              ${d.oat ? `<div class="exp-block"><strong>OAT (Desarrollo Personal y Social):</strong><br>${d.oat}</div>` : ""}
+            </td>
             <td>
               <div class="exp-block"><strong>Conceptual:</strong><br>${d.contenido_conceptual || ""}</div>
               <div class="exp-block"><strong>Procedimental:</strong><br>${d.contenido_procedimental || ""}</div>
@@ -483,6 +499,7 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura e
 
     const nivelLabel = NIVELES[ideaNivel] || ideaNivel;
     const catalogo = catalogoOAporNivel(ideaNivel);
+    const catalogoOAT = catalogoOATporNivel(ideaNivel);
 
     // Si hay objetivos personalizados por día, se los pasamos a la IA como obligatorios
     let bloqueObjetivos = "";
@@ -491,15 +508,16 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura e
       objetivosPersonalizados.forEach((o, i) => {
         const ambLabel = OAS[o.ambito]?.label || "";
         const nucLabel = OAS[o.ambito]?.nucleos[o.nucleo]?.label || "";
-        bloqueObjetivos += `  Día ${i+1}: Ámbito "${ambLabel}" / Núcleo "${nucLabel}" / OA: ${o.oa}\n`;
+        const nucOatLabel = OAS.desarrollo.nucleos[o.nucleoOat]?.label || "";
+        bloqueObjetivos += `  Día ${i+1}: Ámbito "${ambLabel}" / Núcleo "${nucLabel}" / OA: ${o.oa} || OAT (Desarrollo Personal y Social / ${nucOatLabel}): ${o.oat}\n`;
       });
     }
 
     const instruccionObjetivos = (objetivosPersonalizados && objetivosPersonalizados.length > 0)
-      ? `- Usa EXACTAMENTE los objetivos indicados en "OBJETIVOS OBLIGATORIOS POR DÍA". Copia el ámbito, núcleo y OA tal cual se te entregan, sin inventar ni modificar.`
-      : `- Para CADA día, elige los objetivos más pertinentes ÚNICAMENTE del CATÁLOGO OFICIAL DE OA que se te entrega abajo. Copia el ámbito, el núcleo y el texto del OA EXACTAMENTE como aparecen en el catálogo. NO inventes objetivos, NO uses OA de otros niveles, NO modifiques su redacción.`;
+      ? `- Usa EXACTAMENTE los objetivos indicados en "OBJETIVOS OBLIGATORIOS POR DÍA". Copia el ámbito, núcleo, OA y OAT tal cual se te entregan, sin inventar ni modificar.`
+      : `- Para CADA día, elige el OA más pertinente ÚNICAMENTE del CATÁLOGO OFICIAL DE OA, y el OAT (objetivo transversal) más pertinente ÚNICAMENTE del CATÁLOGO OFICIAL DE OAT. Copia el ámbito, el núcleo y el texto del OA y del OAT EXACTAMENTE como aparecen en los catálogos. NO inventes objetivos, NO uses objetivos de otros niveles, NO modifiques su redacción.`;
 
-    const prompt = `Eres una experta en educación parvularia chilena con profundo conocimiento del BCEP 2018. Debes crear una PLANIFICACIÓN DE EXPERIENCIA SECUENCIADA completa de ${ideaDias} días, con un hilo conductor progresivo.
+    const prompt = `Eres una experta en educación parvularia chilena con profundo conocimiento del BCEP 2018. Debes crear una PLANIFICACIÓN DE EXPERIENCIA SECUENCIADA completa de ${ideaDias} días, con un hilo conductor progresivo, siguiendo EXACTAMENTE el formato oficial de planificación chilena.
 
 CONTEXTO:
 - Establecimiento: ${estabName || "Establecimiento"}
@@ -510,13 +528,18 @@ ${bloqueObjetivos}
 INSTRUCCIONES:
 - Crea EXACTAMENTE ${ideaDias} experiencias (una por día), progresivas y conectadas por un hilo conductor.
 ${instruccionObjetivos}
-- Cada día debe seguir el formato oficial de tabla de planificación chilena con estas 7 columnas: Ámbito, Núcleo, Objetivo de Aprendizaje (OA), Contenidos (conceptual, procedimental y actitudinal), Propuestas de Experiencias de Aprendizaje (con Inicio, Desarrollo y Cierre), Orientaciones Pedagógicas, y Evaluaciones.
-- Los contenidos deben especificar las 3 dimensiones: conceptual (saber), procedimental (saber hacer) y actitudinal (saber ser), y deben ser COHERENTES con el OA de ese día.
-- Las propuestas de experiencias deben ser detalladas y realistas, con Inicio, Desarrollo y Cierre claramente descritos.
+- Para CADA día, además del OA oficial, redacta un "OA ESPECIFICADO": el mismo OA pero adaptado y contextualizado al tema puntual de ese día (por ejemplo, si el OA oficial dice "Reconocer las principales partes... de su cuerpo" y el día trata sobre la boca, el especificado sería "Reconocer las principales partes... de la boca en situaciones cotidianas y de juego"). Mantén la estructura del OA oficial pero enfócalo en el contenido del día.
+- La columna OBJETIVO DE APRENDIZAJE incluye entonces TRES elementos: el OA oficial (textual del catálogo), el OA especificado (adaptado al día), y el OAT (textual del catálogo de transversales).
+- Los CONTENIDOS deben especificar las 3 dimensiones: conceptual (saber), procedimental (saber hacer) y actitudinal (saber ser), coherentes con el OA del día. Sé conciso y directo, extrayéndolos del propio OA.
+- Las PROPUESTAS DE EXPERIENCIAS deben ser detalladas y realistas, con Inicio, Desarrollo y Cierre claramente descritos.
+- Las EVALUACIONES deben incluir instrumento de evaluación, foco de evaluación e indicadores de evaluación.
 - Usa un lenguaje cálido, claro y pedagógico propio de la realidad chilena de educación parvularia.
 
-CATÁLOGO OFICIAL DE OA DEL BCEP 2018 PARA EL NIVEL "${nivelLabel}" (usa SOLO estos objetivos):
+CATÁLOGO OFICIAL DE OA DEL BCEP 2018 PARA EL NIVEL "${nivelLabel}" (elige el OA SOLO de aquí):
 ${catalogo}
+
+CATÁLOGO OFICIAL DE OAT (TRANSVERSALES) — ÁMBITO DESARROLLO PERSONAL Y SOCIAL, NIVEL "${nivelLabel}" (elige el OAT SOLO de aquí):
+${catalogoOAT}
 
 Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura EXACTA:
 {
@@ -526,7 +549,9 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura E
       "dia": 1,
       "ambito": "nombre del ámbito (copiado del catálogo)",
       "nucleo": "nombre del núcleo (copiado del catálogo)",
-      "oa": "OA completo copiado EXACTAMENTE del catálogo",
+      "oa": "OA oficial completo copiado EXACTAMENTE del catálogo",
+      "oa_especificado": "el OA adaptado al tema puntual de este día",
+      "oat": "OAT transversal completo copiado EXACTAMENTE del catálogo de transversales",
       "contenido_conceptual": "qué van a saber",
       "contenido_procedimental": "qué van a saber hacer",
       "contenido_actitudinal": "qué actitud van a desarrollar",
@@ -534,7 +559,7 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura E
       "desarrollo": "descripción detallada del desarrollo",
       "cierre": "descripción detallada del cierre",
       "orientaciones": "orientaciones pedagógicas para el educador",
-      "evaluacion": "instrumento y focos de evaluación"
+      "evaluacion": "instrumento de evaluación, foco de evaluación e indicadores de evaluación"
     }
   ]
 }
@@ -558,7 +583,7 @@ Genera los ${ideaDias} días completos.`;
   const abrirPersonalizacion = (ideaSel) => {
     setIdeaElegida(ideaSel);
     // Inicializar un objetivo vacío por cada día
-    const inicial = Array.from({ length: ideaDias }, () => ({ ambito: "", nucleo: "", oa: "" }));
+    const inicial = Array.from({ length: ideaDias }, () => ({ ambito: "", nucleo: "", oa: "", nucleoOat: "identidad", oat: "" }));
     setObjetivosDias(inicial);
     setSecuenciaError("");
     setView("personalizarSec");
@@ -953,7 +978,7 @@ Responde SOLO con JSON válido sin markdown ni backticks:
 
   // ── RENDER PERSONALIZAR SECUENCIA (elegir OA por día — Modo B) ─────────────
   if (view==="personalizarSec") {
-    const todosCompletos = objetivosDias.length>0 && objetivosDias.every(o=>o.ambito && o.nucleo && o.oa);
+    const todosCompletos = objetivosDias.length>0 && objetivosDias.every(o=>o.ambito && o.nucleo && o.oa && o.oat);
     return (
       <div style={{maxWidth:820,margin:"0 auto",padding:"1.5rem 1rem",fontFamily:"var(--font-sans)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem",flexWrap:"wrap",gap:8}}>
@@ -970,39 +995,57 @@ Responde SOLO con JSON válido sin markdown ni backticks:
         </div>
 
         <div style={{fontSize:13,color:"var(--color-text-secondary)",background:pinkLight,padding:"10px 14px",borderRadius:8,marginBottom:"1rem"}}>
-          Elige el <strong>Ámbito, Núcleo y OA</strong> de cada día. Todos vienen directo de las Bases Curriculares (BCEP 2018) para el nivel <strong>{NIVELES[ideaNivel]}</strong>. La IA generará la tabla respetando exactamente lo que elijas.
+          Elige el <strong>Ámbito, Núcleo, OA y OAT</strong> de cada día. Todos vienen directo de las Bases Curriculares (BCEP 2018) para el nivel <strong>{NIVELES[ideaNivel]}</strong>. La IA generará la tabla respetando exactamente lo que elijas.
         </div>
 
         {objetivosDias.map((obj,i)=>{
           const nucleosD = obj.ambito && OAS[obj.ambito] ? Object.entries(OAS[obj.ambito].nucleos).map(([k,v])=>({value:k,label:v.label})) : [];
           const oasD = obj.ambito && obj.nucleo && OAS[obj.ambito]?.nucleos[obj.nucleo] ? (OAS[obj.ambito].nucleos[obj.nucleo][ideaNivel] || OAS[obj.ambito].nucleos[obj.nucleo].medio || []) : [];
+          const oatsD = OAS.desarrollo.nucleos[obj.nucleoOat]?.[ideaNivel] || OAS.desarrollo.nucleos[obj.nucleoOat]?.medio || [];
+          const diaCompleto = obj.ambito && obj.nucleo && obj.oa && obj.oat;
           const setObj = (campo,valor)=>{
             const n=[...objetivosDias];
             n[i]={...n[i],[campo]:valor};
             if(campo==="ambito"){n[i].nucleo="";n[i].oa="";}
             if(campo==="nucleo"){n[i].oa="";}
+            if(campo==="nucleoOat"){n[i].oat="";}
             setObjetivosDias(n);
           };
           return (
-            <div key={i} style={{background:"var(--color-background-primary)",border:`0.5px solid ${obj.oa?green:"var(--color-border-tertiary)"}`,borderRadius:10,padding:"1rem",marginBottom:12}}>
+            <div key={i} style={{background:"var(--color-background-primary)",border:`0.5px solid ${diaCompleto?green:"var(--color-border-tertiary)"}`,borderRadius:10,padding:"1rem",marginBottom:12}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                <div style={{width:26,height:26,borderRadius:"50%",background:obj.oa?greenLight:pinkLight,color:obj.oa?"#085041":"#72243E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:600}}>{obj.oa?"✓":i+1}</div>
+                <div style={{width:26,height:26,borderRadius:"50%",background:diaCompleto?greenLight:pinkLight,color:diaCompleto?"#085041":"#72243E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:600}}>{diaCompleto?"✓":i+1}</div>
                 <div style={{fontSize:14,fontWeight:600}}>Día {i+1}</div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-                <SelectField label="Ámbito" value={obj.ambito} onChange={v=>setObj("ambito",v)}
+                <SelectField label="Ámbito (OA)" value={obj.ambito} onChange={v=>setObj("ambito",v)}
                   options={[{value:"",label:"Seleccione ámbito"},...Object.entries(OAS).map(([k,v])=>({value:k,label:v.label}))]}/>
-                <SelectField label="Núcleo" value={obj.nucleo} onChange={v=>setObj("nucleo",v)}
+                <SelectField label="Núcleo (OA)" value={obj.nucleo} onChange={v=>setObj("nucleo",v)}
                   options={[{value:"",label:"Seleccione núcleo"},...nucleosD]}/>
               </div>
               {oasD.length>0 && (
-                <Field label="Objetivo de Aprendizaje (OA)" full>
-                  <select value={obj.oa} onChange={e=>setObj("oa",e.target.value)} style={inputStyle}>
-                    <option value="">Seleccione un OA</option>
-                    {oasD.map(o=><option key={o} value={o}>{o}</option>)}
-                  </select>
-                </Field>
+                <div style={{marginBottom:10}}>
+                  <Field label="Objetivo de Aprendizaje (OA)" full>
+                    <select value={obj.oa} onChange={e=>setObj("oa",e.target.value)} style={inputStyle}>
+                      <option value="">Seleccione un OA</option>
+                      {oasD.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </Field>
+                </div>
               )}
+              <div style={{borderTop:"0.5px dashed var(--color-border-secondary)",paddingTop:10}}>
+                <div style={{fontSize:11,color:pink,fontWeight:600,marginBottom:6}}>Objetivo Transversal (OAT) · Desarrollo Personal y Social</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr",gap:10}}>
+                  <SelectField label="Núcleo Transversal" value={obj.nucleoOat} onChange={v=>setObj("nucleoOat",v)}
+                    options={[{value:"identidad",label:"Identidad y Autonomía"},{value:"convivencia",label:"Convivencia y Ciudadanía"},{value:"corporalidad",label:"Corporalidad y Movimiento"}]}/>
+                  <Field label="Selecciona el OAT" full>
+                    <select value={obj.oat} onChange={e=>setObj("oat",e.target.value)} style={inputStyle}>
+                      <option value="">Seleccione un OAT</option>
+                      {oatsD.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              </div>
             </div>
           );
         })}
@@ -1011,7 +1054,7 @@ Responde SOLO con JSON válido sin markdown ni backticks:
 
         <button
           onClick={()=>{
-            if(!todosCompletos){ setSecuenciaError("Completa el ámbito, núcleo y OA de todos los días antes de generar."); return; }
+            if(!todosCompletos){ setSecuenciaError("Completa el ámbito, núcleo, OA y OAT de todos los días antes de generar."); return; }
             generarSecuencia(ideaElegida, objetivosDias);
           }}
           disabled={!todosCompletos}
@@ -1082,9 +1125,22 @@ Responde SOLO con JSON válido sin markdown ni backticks:
                     </div>
                   </div>
                   <div style={{background:pinkLight,borderRadius:8,padding:10}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"#72243E",textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Objetivo de Aprendizaje</div>
-                    <div style={{fontSize:13,color:"#72243E"}}>{d.oa}</div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#72243E",textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Objetivo de Aprendizaje (OA)</div>
+                    <div style={{fontSize:13,color:"#72243E",marginBottom:d.oa_especificado?8:0}}>{d.oa}</div>
+                    {d.oa_especificado && (
+                      <>
+                        <div style={{fontSize:10,fontWeight:700,color:"#72243E",textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>OA Especificado</div>
+                        <div style={{fontSize:13,color:"#72243E",fontStyle:"italic"}}>{d.oa_especificado}</div>
+                      </>
+                    )}
                   </div>
+                  {d.oat && (
+                    <div style={{background:"#E6F1FB",borderRadius:8,padding:10}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"#0C447C",textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Objetivo de Aprendizaje Transversal (OAT)</div>
+                      <div style={{fontSize:12,color:"#0C447C",marginBottom:3}}>Desarrollo Personal y Social</div>
+                      <div style={{fontSize:13,color:"#0C447C"}}>{d.oat}</div>
+                    </div>
+                  )}
                   <div>
                     <div style={{fontSize:10,fontWeight:700,color:pink,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Contenidos</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
