@@ -63,6 +63,20 @@ const OAS = {
   }},
 };
 
+// ── Catálogo de OA reales por nivel (para anclar la IA al BCEP) ──────────────
+function catalogoOAporNivel(nivel) {
+  let out = "";
+  for (const [, ambData] of Object.entries(OAS)) {
+    out += `\nÁMBITO: ${ambData.label}\n`;
+    for (const [, nucData] of Object.entries(ambData.nucleos)) {
+      const lista = nucData[nivel] || nucData.medio || [];
+      out += `  Núcleo "${nucData.label}":\n`;
+      lista.forEach(oa => { out += `    - ${oa}\n`; });
+    }
+  }
+  return out.trim();
+}
+
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const pink = "#e5608a";
 const pinkLight = "#fbeaf0";
@@ -320,6 +334,8 @@ export default function App() {
   const [secuenciaLoading, setSecuenciaLoading] = useState(false);
   const [secuenciaError, setSecuenciaError] = useState("");
   const [ideaElegida, setIdeaElegida] = useState(null); // idea sobre la que se decide el modo
+  // Objetivos personalizados por día: [{ambito, nucleo, oa}] (uno por día)
+  const [objetivosDias, setObjetivosDias] = useState([]);
   const [estabName, setEstabName] = useState("");
   const [estabRegion, setEstabRegion] = useState("");
   const [estabDone, setEstabDone] = useState(false);
@@ -461,11 +477,27 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura e
   };
 
   // ── API call: generar planificación secuenciada completa (formato tabla 7 columnas)
-  const generarSecuencia = useCallback(async (ideaSel) => {
+  const generarSecuencia = useCallback(async (ideaSel, objetivosPersonalizados = null) => {
     setSecuenciaError(""); setSecuenciaLoading(true); setSecuencia(null);
     setView("secuencia");
 
     const nivelLabel = NIVELES[ideaNivel] || ideaNivel;
+    const catalogo = catalogoOAporNivel(ideaNivel);
+
+    // Si hay objetivos personalizados por día, se los pasamos a la IA como obligatorios
+    let bloqueObjetivos = "";
+    if (objetivosPersonalizados && objetivosPersonalizados.length > 0) {
+      bloqueObjetivos = "\nOBJETIVOS OBLIGATORIOS POR DÍA (definidos por la educadora — respétalos EXACTAMENTE, no los cambies):\n";
+      objetivosPersonalizados.forEach((o, i) => {
+        const ambLabel = OAS[o.ambito]?.label || "";
+        const nucLabel = OAS[o.ambito]?.nucleos[o.nucleo]?.label || "";
+        bloqueObjetivos += `  Día ${i+1}: Ámbito "${ambLabel}" / Núcleo "${nucLabel}" / OA: ${o.oa}\n`;
+      });
+    }
+
+    const instruccionObjetivos = (objetivosPersonalizados && objetivosPersonalizados.length > 0)
+      ? `- Usa EXACTAMENTE los objetivos indicados en "OBJETIVOS OBLIGATORIOS POR DÍA". Copia el ámbito, núcleo y OA tal cual se te entregan, sin inventar ni modificar.`
+      : `- Para CADA día, elige los objetivos más pertinentes ÚNICAMENTE del CATÁLOGO OFICIAL DE OA que se te entrega abajo. Copia el ámbito, el núcleo y el texto del OA EXACTAMENTE como aparecen en el catálogo. NO inventes objetivos, NO uses OA de otros niveles, NO modifiques su redacción.`;
 
     const prompt = `Eres una experta en educación parvularia chilena con profundo conocimiento del BCEP 2018. Debes crear una PLANIFICACIÓN DE EXPERIENCIA SECUENCIADA completa de ${ideaDias} días, con un hilo conductor progresivo.
 
@@ -474,14 +506,17 @@ CONTEXTO:
 - Educadora/or: ${cursoEdu || "Educadora"}
 - Curso: ${cursoName || ""} — Nivel BCEP: ${nivelLabel}
 - Idea base de la secuencia: "${ideaSel.titulo}" — ${ideaSel.desarrollo}
-
+${bloqueObjetivos}
 INSTRUCCIONES:
 - Crea EXACTAMENTE ${ideaDias} experiencias (una por día), progresivas y conectadas por un hilo conductor.
-- Para CADA día, define TÚ los objetivos más pertinentes del BCEP 2018 (elige el ámbito, núcleo y OA reales apropiados para ese día y nivel).
+${instruccionObjetivos}
 - Cada día debe seguir el formato oficial de tabla de planificación chilena con estas 7 columnas: Ámbito, Núcleo, Objetivo de Aprendizaje (OA), Contenidos (conceptual, procedimental y actitudinal), Propuestas de Experiencias de Aprendizaje (con Inicio, Desarrollo y Cierre), Orientaciones Pedagógicas, y Evaluaciones.
-- Los contenidos deben especificar las 3 dimensiones: conceptual (saber), procedimental (saber hacer) y actitudinal (saber ser).
+- Los contenidos deben especificar las 3 dimensiones: conceptual (saber), procedimental (saber hacer) y actitudinal (saber ser), y deben ser COHERENTES con el OA de ese día.
 - Las propuestas de experiencias deben ser detalladas y realistas, con Inicio, Desarrollo y Cierre claramente descritos.
 - Usa un lenguaje cálido, claro y pedagógico propio de la realidad chilena de educación parvularia.
+
+CATÁLOGO OFICIAL DE OA DEL BCEP 2018 PARA EL NIVEL "${nivelLabel}" (usa SOLO estos objetivos):
+${catalogo}
 
 Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura EXACTA:
 {
@@ -489,9 +524,9 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura E
   "dias": [
     {
       "dia": 1,
-      "ambito": "nombre del ámbito",
-      "nucleo": "nombre del núcleo",
-      "oa": "OA completo con su número y descripción",
+      "ambito": "nombre del ámbito (copiado del catálogo)",
+      "nucleo": "nombre del núcleo (copiado del catálogo)",
+      "oa": "OA completo copiado EXACTAMENTE del catálogo",
       "contenido_conceptual": "qué van a saber",
       "contenido_procedimental": "qué van a saber hacer",
       "contenido_actitudinal": "qué actitud van a desarrollar",
@@ -518,6 +553,16 @@ Genera los ${ideaDias} días completos.`;
     }
     setSecuenciaLoading(false);
   }, [ideaNivel, ideaDias, estabName, cursoEdu, cursoName]);
+
+  // ── Abrir la personalización de objetivos por día (Modo B)
+  const abrirPersonalizacion = (ideaSel) => {
+    setIdeaElegida(ideaSel);
+    // Inicializar un objetivo vacío por cada día
+    const inicial = Array.from({ length: ideaDias }, () => ({ ambito: "", nucleo: "", oa: "" }));
+    setObjetivosDias(inicial);
+    setSecuenciaError("");
+    setView("personalizarSec");
+  };
 
   // ── API call
   const generar = useCallback(async () => {
@@ -872,12 +917,16 @@ Responde SOLO con JSON válido sin markdown ni backticks:
               {ideaSecuenciada ? (
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"}}>
                   <button onClick={()=>planificarIdea(idea)}
-                    style={{background:"var(--color-background-primary)",color:"#72243E",border:`1px solid ${pink}`,borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
-                    📋 Planificador individual (por día)
+                    style={{background:"var(--color-background-primary)",color:"var(--color-text-secondary)",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                    📋 Día por día
+                  </button>
+                  <button onClick={()=>abrirPersonalizacion(idea)}
+                    style={{background:"var(--color-background-primary)",color:"#72243E",border:`1px solid ${pink}`,borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                    ⚙️ Personalizar objetivos
                   </button>
                   <button onClick={()=>generarSecuencia(idea)}
-                    style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
-                    📑 Exportar secuencia completa ({ideaDias} días) →
+                    style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                    ⚡ Secuencia rápida ({ideaDias} días)
                   </button>
                 </div>
               ) : (
@@ -892,14 +941,86 @@ Responde SOLO con JSON válido sin markdown ni backticks:
           ))}
           {ideaSecuenciada && (
             <div style={{fontSize:12,color:"var(--color-text-tertiary)",textAlign:"center",padding:"4px 0",lineHeight:1.5}}>
-              💡 <strong>Planificador individual:</strong> planificas un día a la vez eligiendo sus objetivos.<br/>
-              📑 <strong>Secuencia completa:</strong> la IA genera los {ideaDias} días en formato de tabla, listos para exportar en un solo PDF.
+              📋 <strong>Día por día:</strong> planificas un día a la vez con el planificador normal.<br/>
+              ⚙️ <strong>Personalizar objetivos:</strong> tú eliges el OA de cada día y la IA arma la tabla respetándolos.<br/>
+              ⚡ <strong>Secuencia rápida:</strong> la IA elige los objetivos (solo del BCEP) y genera los {ideaDias} días en tabla, listos para PDF.
             </div>
           )}
         </div>
       )}
     </div>
   );
+
+  // ── RENDER PERSONALIZAR SECUENCIA (elegir OA por día — Modo B) ─────────────
+  if (view==="personalizarSec") {
+    const todosCompletos = objetivosDias.length>0 && objetivosDias.every(o=>o.ambito && o.nucleo && o.oa);
+    return (
+      <div style={{maxWidth:820,margin:"0 auto",padding:"1.5rem 1rem",fontFamily:"var(--font-sans)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem",flexWrap:"wrap",gap:8}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:500}}>⚙️ Personalizar objetivos por día</div>
+            <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:2}}>
+              {ideaElegida?.titulo} · {NIVELES[ideaNivel]} · {ideaDias} días
+            </div>
+          </div>
+          <button onClick={()=>setView("ideasList")}
+            style={{border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer"}}>
+            ← Volver
+          </button>
+        </div>
+
+        <div style={{fontSize:13,color:"var(--color-text-secondary)",background:pinkLight,padding:"10px 14px",borderRadius:8,marginBottom:"1rem"}}>
+          Elige el <strong>Ámbito, Núcleo y OA</strong> de cada día. Todos vienen directo de las Bases Curriculares (BCEP 2018) para el nivel <strong>{NIVELES[ideaNivel]}</strong>. La IA generará la tabla respetando exactamente lo que elijas.
+        </div>
+
+        {objetivosDias.map((obj,i)=>{
+          const nucleosD = obj.ambito && OAS[obj.ambito] ? Object.entries(OAS[obj.ambito].nucleos).map(([k,v])=>({value:k,label:v.label})) : [];
+          const oasD = obj.ambito && obj.nucleo && OAS[obj.ambito]?.nucleos[obj.nucleo] ? (OAS[obj.ambito].nucleos[obj.nucleo][ideaNivel] || OAS[obj.ambito].nucleos[obj.nucleo].medio || []) : [];
+          const setObj = (campo,valor)=>{
+            const n=[...objetivosDias];
+            n[i]={...n[i],[campo]:valor};
+            if(campo==="ambito"){n[i].nucleo="";n[i].oa="";}
+            if(campo==="nucleo"){n[i].oa="";}
+            setObjetivosDias(n);
+          };
+          return (
+            <div key={i} style={{background:"var(--color-background-primary)",border:`0.5px solid ${obj.oa?green:"var(--color-border-tertiary)"}`,borderRadius:10,padding:"1rem",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:obj.oa?greenLight:pinkLight,color:obj.oa?"#085041":"#72243E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:600}}>{obj.oa?"✓":i+1}</div>
+                <div style={{fontSize:14,fontWeight:600}}>Día {i+1}</div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                <SelectField label="Ámbito" value={obj.ambito} onChange={v=>setObj("ambito",v)}
+                  options={[{value:"",label:"Seleccione ámbito"},...Object.entries(OAS).map(([k,v])=>({value:k,label:v.label}))]}/>
+                <SelectField label="Núcleo" value={obj.nucleo} onChange={v=>setObj("nucleo",v)}
+                  options={[{value:"",label:"Seleccione núcleo"},...nucleosD]}/>
+              </div>
+              {oasD.length>0 && (
+                <Field label="Objetivo de Aprendizaje (OA)" full>
+                  <select value={obj.oa} onChange={e=>setObj("oa",e.target.value)} style={inputStyle}>
+                    <option value="">Seleccione un OA</option>
+                    {oasD.map(o=><option key={o} value={o}>{o}</option>)}
+                  </select>
+                </Field>
+              )}
+            </div>
+          );
+        })}
+
+        {secuenciaError && <div style={{color:"#A32D2D",fontSize:13,marginBottom:8,padding:"8px 12px",background:"#FCEBEB",borderRadius:8}}>{secuenciaError}</div>}
+
+        <button
+          onClick={()=>{
+            if(!todosCompletos){ setSecuenciaError("Completa el ámbito, núcleo y OA de todos los días antes de generar."); return; }
+            generarSecuencia(ideaElegida, objetivosDias);
+          }}
+          disabled={!todosCompletos}
+          style={{width:"100%",padding:"13px",background:todosCompletos?pink:"var(--color-background-secondary)",color:todosCompletos?"white":"var(--color-text-tertiary)",border:"none",borderRadius:8,fontSize:15,fontWeight:500,cursor:todosCompletos?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          📑 Generar secuencia con estos objetivos →
+        </button>
+      </div>
+    );
+  }
 
   // ── RENDER SECUENCIA (tabla generada) ─────────────────────────────────────
   if (view==="secuencia") {
