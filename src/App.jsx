@@ -205,6 +205,102 @@ function printPlan(plan, meta) {
   doc.body.appendChild(closeBtn);
 }
 
+// ── PRINT / PDF — Planificación Secuenciada (tabla 7 columnas) ────────────────
+function printSecuencia(secuencia, meta) {
+  const css = `
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Georgia,serif;padding:24px;color:#1a1a1a;font-size:11px;line-height:1.5;background:#fff}
+    h1{font-size:18px;font-weight:700;color:#72243E;margin-bottom:4px;text-align:center;font-family:sans-serif}
+    .subtitle{text-align:center;font-size:12px;color:#993556;margin-bottom:6px;font-family:sans-serif}
+    .meta{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-bottom:20px}
+    .meta span{background:#fbeaf0;color:#993556;padding:3px 9px;border-radius:20px;font-size:10px;font-family:sans-serif}
+    .dia-title{font-size:13px;font-weight:700;color:#fff;background:#e5608a;padding:6px 12px;border-radius:6px 6px 0 0;font-family:sans-serif;margin-top:22px}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px;table-layout:fixed}
+    th{background:#fbeaf0;color:#72243E;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:6px 5px;border:1px solid #f4c0d1;font-family:sans-serif;vertical-align:top;text-align:left}
+    td{padding:7px 6px;border:1px solid #e5c4d0;font-size:10px;vertical-align:top;line-height:1.45;word-wrap:break-word;overflow-wrap:break-word}
+    td strong{color:#72243E;font-family:sans-serif;font-size:9px;text-transform:uppercase;letter-spacing:.02em}
+    .exp-block{margin-bottom:6px}
+    .exp-block:last-child{margin-bottom:0}
+    @media print{
+      body{padding:12px}
+      .no-print{display:none!important}
+      .dia-wrap{page-break-inside:avoid}
+      thead{display:table-header-group}
+    }
+  `;
+
+  const diasHtml = (secuencia.dias || []).map(d => `
+    <div class="dia-wrap">
+      <div class="dia-title">📅 DÍA ${d.dia || ""}</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:11%">Ámbito</th>
+            <th style="width:11%">Núcleo</th>
+            <th style="width:16%">Objetivo de Aprendizaje</th>
+            <th style="width:16%">Contenidos</th>
+            <th style="width:24%">Propuestas de Experiencias de Aprendizaje</th>
+            <th style="width:12%">Orientaciones Pedagógicas</th>
+            <th style="width:10%">Evaluaciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${d.ambito || ""}</td>
+            <td>${d.nucleo || ""}</td>
+            <td>${d.oa || ""}</td>
+            <td>
+              <div class="exp-block"><strong>Conceptual:</strong><br>${d.contenido_conceptual || ""}</div>
+              <div class="exp-block"><strong>Procedimental:</strong><br>${d.contenido_procedimental || ""}</div>
+              <div class="exp-block"><strong>Actitudinal:</strong><br>${d.contenido_actitudinal || ""}</div>
+            </td>
+            <td>
+              <div class="exp-block"><strong>Inicio:</strong><br>${d.inicio || ""}</div>
+              <div class="exp-block"><strong>Desarrollo:</strong><br>${d.desarrollo || ""}</div>
+              <div class="exp-block"><strong>Cierre:</strong><br>${d.cierre || ""}</div>
+            </td>
+            <td>${d.orientaciones || ""}</td>
+            <td>${d.evaluacion || ""}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `).join("");
+
+  const bodyHtml = `
+    <div class="no-print" style="background:#fbeaf0;padding:10px 16px;border-radius:8px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;font-family:sans-serif">
+      <span style="font-size:13px;color:#72243E;font-weight:500">✦ Planificación secuenciada lista para imprimir</span>
+      <button onclick="window.print()" style="background:#e5608a;color:white;border:none;border-radius:6px;padding:7px 16px;font-size:13px;cursor:pointer;font-weight:500">🖨 Imprimir / Guardar PDF</button>
+    </div>
+    <h1>"${secuencia.titulo || "Experiencia Secuenciada"}"</h1>
+    <div class="subtitle">Planificación de Experiencia Secuenciada · ${(secuencia.dias||[]).length} días</div>
+    <div class="meta">
+      <span>🏫 ${meta.estab}</span><span>👤 ${meta.edu}</span><span>👥 ${meta.curso}</span>
+      <span>📚 ${meta.nivel}</span><span>📅 ${meta.fecha}</span>
+    </div>
+    ${diasHtml}
+  `;
+
+  let iframe = document.getElementById("__print_frame__");
+  if (iframe) iframe.remove();
+  iframe = document.createElement("iframe");
+  iframe.id = "__print_frame__";
+  iframe.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:#fff";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Planificación Secuenciada</title><style>${css}</style></head><body>${bodyHtml}</body></html>`);
+  doc.close();
+
+  const closeBtn = doc.createElement("button");
+  closeBtn.className = "no-print";
+  closeBtn.textContent = "✕ Cerrar vista previa";
+  closeBtn.style.cssText = "position:fixed;bottom:16px;right:16px;background:#333;color:white;border:none;border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:sans-serif;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.3)";
+  closeBtn.onclick = () => iframe.remove();
+  doc.body.appendChild(closeBtn);
+}
+
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export default function App() {
   const [view, setView] = useState("setup"); // setup | lobby | gen | output | ideas | ideasList
@@ -218,6 +314,12 @@ export default function App() {
   const [ideasGeneradas, setIdeasGeneradas] = useState([]); // [{titulo, desarrollo}]
   const [ideasLoading, setIdeasLoading] = useState(false);
   const [ideasError, setIdeasError] = useState("");
+
+  // ── Planificación secuenciada (formato tabla 7 columnas) ──
+  const [secuencia, setSecuencia] = useState(null); // {titulo, dias:[{...7 columnas}]}
+  const [secuenciaLoading, setSecuenciaLoading] = useState(false);
+  const [secuenciaError, setSecuenciaError] = useState("");
+  const [ideaElegida, setIdeaElegida] = useState(null); // idea sobre la que se decide el modo
   const [estabName, setEstabName] = useState("");
   const [estabRegion, setEstabRegion] = useState("");
   const [estabDone, setEstabDone] = useState(false);
@@ -357,6 +459,65 @@ Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura e
     setPlan(null); setError("");
     setView("gen");
   };
+
+  // ── API call: generar planificación secuenciada completa (formato tabla 7 columnas)
+  const generarSecuencia = useCallback(async (ideaSel) => {
+    setSecuenciaError(""); setSecuenciaLoading(true); setSecuencia(null);
+    setView("secuencia");
+
+    const nivelLabel = NIVELES[ideaNivel] || ideaNivel;
+
+    const prompt = `Eres una experta en educación parvularia chilena con profundo conocimiento del BCEP 2018. Debes crear una PLANIFICACIÓN DE EXPERIENCIA SECUENCIADA completa de ${ideaDias} días, con un hilo conductor progresivo.
+
+CONTEXTO:
+- Establecimiento: ${estabName || "Establecimiento"}
+- Educadora/or: ${cursoEdu || "Educadora"}
+- Curso: ${cursoName || ""} — Nivel BCEP: ${nivelLabel}
+- Idea base de la secuencia: "${ideaSel.titulo}" — ${ideaSel.desarrollo}
+
+INSTRUCCIONES:
+- Crea EXACTAMENTE ${ideaDias} experiencias (una por día), progresivas y conectadas por un hilo conductor.
+- Para CADA día, define TÚ los objetivos más pertinentes del BCEP 2018 (elige el ámbito, núcleo y OA reales apropiados para ese día y nivel).
+- Cada día debe seguir el formato oficial de tabla de planificación chilena con estas 7 columnas: Ámbito, Núcleo, Objetivo de Aprendizaje (OA), Contenidos (conceptual, procedimental y actitudinal), Propuestas de Experiencias de Aprendizaje (con Inicio, Desarrollo y Cierre), Orientaciones Pedagógicas, y Evaluaciones.
+- Los contenidos deben especificar las 3 dimensiones: conceptual (saber), procedimental (saber hacer) y actitudinal (saber ser).
+- Las propuestas de experiencias deben ser detalladas y realistas, con Inicio, Desarrollo y Cierre claramente descritos.
+- Usa un lenguaje cálido, claro y pedagógico propio de la realidad chilena de educación parvularia.
+
+Responde SOLO con JSON válido, sin markdown ni backticks, con esta estructura EXACTA:
+{
+  "titulo": "Título general de la secuencia",
+  "dias": [
+    {
+      "dia": 1,
+      "ambito": "nombre del ámbito",
+      "nucleo": "nombre del núcleo",
+      "oa": "OA completo con su número y descripción",
+      "contenido_conceptual": "qué van a saber",
+      "contenido_procedimental": "qué van a saber hacer",
+      "contenido_actitudinal": "qué actitud van a desarrollar",
+      "inicio": "descripción detallada del inicio",
+      "desarrollo": "descripción detallada del desarrollo",
+      "cierre": "descripción detallada del cierre",
+      "orientaciones": "orientaciones pedagógicas para el educador",
+      "evaluacion": "instrumento y focos de evaluación"
+    }
+  ]
+}
+Genera los ${ideaDias} días completos.`;
+
+    try {
+      const txt = await callClaude(prompt, 8000);
+      const start = txt.indexOf("{");
+      const end = txt.lastIndexOf("}");
+      if (start === -1 || end === -1) throw new Error("No se recibió JSON válido de la IA.");
+      const parsed = JSON.parse(txt.slice(start, end + 1));
+      if (!parsed.dias || parsed.dias.length === 0) throw new Error("No se generaron los días de la secuencia.");
+      setSecuencia(parsed);
+    } catch(e) {
+      setSecuenciaError("Error al generar la secuencia: " + e.message);
+    }
+    setSecuenciaLoading(false);
+  }, [ideaNivel, ideaDias, estabName, cursoEdu, cursoName]);
 
   // ── API call
   const generar = useCallback(async () => {
@@ -708,23 +869,143 @@ Responde SOLO con JSON válido sin markdown ni backticks:
                 onChange={e=>{const n=[...ideasGeneradas];n[i]={...n[i],desarrollo:e.target.value};setIdeasGeneradas(n);}}
                 rows={ideaSecuenciada?4:3}
                 style={{...inputStyle,fontSize:13,lineHeight:1.6,resize:"vertical",marginBottom:10}}/>
-              <div style={{display:"flex",justifyContent:"flex-end"}}>
-                <button onClick={()=>planificarIdea(idea)}
-                  style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:14,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
-                  📋 Planificar esta idea →
-                </button>
-              </div>
+              {ideaSecuenciada ? (
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"}}>
+                  <button onClick={()=>planificarIdea(idea)}
+                    style={{background:"var(--color-background-primary)",color:"#72243E",border:`1px solid ${pink}`,borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                    📋 Planificador individual (por día)
+                  </button>
+                  <button onClick={()=>generarSecuencia(idea)}
+                    style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                    📑 Exportar secuencia completa ({ideaDias} días) →
+                  </button>
+                </div>
+              ) : (
+                <div style={{display:"flex",justifyContent:"flex-end"}}>
+                  <button onClick={()=>planificarIdea(idea)}
+                    style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:14,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                    📋 Planificar esta idea →
+                  </button>
+                </div>
+              )}
             </div>
           ))}
           {ideaSecuenciada && (
-            <div style={{fontSize:12,color:"var(--color-text-tertiary)",textAlign:"center",padding:"4px 0"}}>
-              💡 Al planificar una secuencia, planifica cada día por separado eligiendo los objetivos correspondientes a ese día.
+            <div style={{fontSize:12,color:"var(--color-text-tertiary)",textAlign:"center",padding:"4px 0",lineHeight:1.5}}>
+              💡 <strong>Planificador individual:</strong> planificas un día a la vez eligiendo sus objetivos.<br/>
+              📑 <strong>Secuencia completa:</strong> la IA genera los {ideaDias} días en formato de tabla, listos para exportar en un solo PDF.
             </div>
           )}
         </div>
       )}
     </div>
   );
+
+  // ── RENDER SECUENCIA (tabla generada) ─────────────────────────────────────
+  if (view==="secuencia") {
+    const meta = genMeta();
+    return (
+      <div style={{maxWidth:960,margin:"0 auto",padding:"1.5rem 1rem",fontFamily:"var(--font-sans)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem",flexWrap:"wrap",gap:8}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:500}}>📑 Planificación Secuenciada</div>
+            <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:2}}>
+              {NIVELES[ideaNivel]} · {ideaDias} días · formato tabla
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {secuencia && !secuenciaLoading && (
+              <button onClick={()=>printSecuencia(secuencia,meta)}
+                style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:5}}>
+                📄 Exportar PDF
+              </button>
+            )}
+            <button onClick={()=>setView("ideasList")}
+              style={{border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",borderRadius:8,padding:"7px 14px",fontSize:13,cursor:"pointer"}}>
+              ← Volver
+            </button>
+          </div>
+        </div>
+
+        {secuenciaLoading && (
+          <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"2rem",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:10}}>📑</div>
+            <div style={{fontSize:15,color:"var(--color-text-secondary)"}}>La IA está creando la secuencia completa de {ideaDias} días...</div>
+            <div style={{fontSize:13,color:"var(--color-text-tertiary)",marginTop:5}}>Esto puede tardar un poco más por ser varios días</div>
+          </div>
+        )}
+
+        {secuenciaError && !secuenciaLoading && (
+          <div style={{color:"#A32D2D",padding:"1rem",background:"#FCEBEB",borderRadius:8,fontSize:14}}>{secuenciaError}</div>
+        )}
+
+        {secuencia && !secuenciaLoading && (
+          <div>
+            <div style={{background:pinkLight,borderRadius:10,padding:"1.1rem",marginBottom:"1rem"}}>
+              <div style={{fontSize:18,fontWeight:600,color:"#72243E"}}>"{secuencia.titulo}"</div>
+              <div style={{fontSize:12,color:"#993556",marginTop:4}}>Experiencia secuenciada de {(secuencia.dias||[]).length} días · {meta.curso}</div>
+            </div>
+
+            {(secuencia.dias||[]).map((d,i)=>(
+              <div key={i} style={{marginBottom:"1.25rem",border:"0.5px solid var(--color-border-tertiary)",borderRadius:10,overflow:"hidden"}}>
+                <div style={{background:pink,color:"white",padding:"8px 14px",fontSize:14,fontWeight:600}}>📅 Día {d.dia || i+1}</div>
+                <div style={{padding:"1rem",display:"flex",flexDirection:"column",gap:10}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div style={{background:"var(--color-background-secondary)",borderRadius:8,padding:10}}>
+                      <div style={{fontSize:10,fontWeight:700,color:pink,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Ámbito</div>
+                      <div style={{fontSize:13}}>{d.ambito}</div>
+                    </div>
+                    <div style={{background:"var(--color-background-secondary)",borderRadius:8,padding:10}}>
+                      <div style={{fontSize:10,fontWeight:700,color:pink,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Núcleo</div>
+                      <div style={{fontSize:13}}>{d.nucleo}</div>
+                    </div>
+                  </div>
+                  <div style={{background:pinkLight,borderRadius:8,padding:10}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#72243E",textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Objetivo de Aprendizaje</div>
+                    <div style={{fontSize:13,color:"#72243E"}}>{d.oa}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:pink,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Contenidos</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                      {[["Conceptual",d.contenido_conceptual],["Procedimental",d.contenido_procedimental],["Actitudinal",d.contenido_actitudinal]].map(([t,c])=>(
+                        <div key={t} style={{background:"var(--color-background-secondary)",borderRadius:8,padding:9}}>
+                          <div style={{fontSize:10,fontWeight:600,color:"var(--color-text-secondary)",marginBottom:3}}>{t}</div>
+                          <div style={{fontSize:12,lineHeight:1.5}}>{c}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:pink,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Propuestas de Experiencias</div>
+                    <p style={{fontSize:13,lineHeight:1.6,marginBottom:6}}><strong>Inicio:</strong> {d.inicio}</p>
+                    <p style={{fontSize:13,lineHeight:1.6,marginBottom:6}}><strong>Desarrollo:</strong> {d.desarrollo}</p>
+                    <p style={{fontSize:13,lineHeight:1.6}}><strong>Cierre:</strong> {d.cierre}</p>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div style={{background:"var(--color-background-secondary)",borderRadius:8,padding:10}}>
+                      <div style={{fontSize:10,fontWeight:700,color:pink,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Orientaciones Pedagógicas</div>
+                      <div style={{fontSize:12,lineHeight:1.5}}>{d.orientaciones}</div>
+                    </div>
+                    <div style={{background:"var(--color-background-secondary)",borderRadius:8,padding:10}}>
+                      <div style={{fontSize:10,fontWeight:700,color:pink,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Evaluaciones</div>
+                      <div style={{fontSize:12,lineHeight:1.5}}>{d.evaluacion}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div style={{textAlign:"center",padding:"8px 0 16px"}}>
+              <button onClick={()=>printSecuencia(secuencia,meta)}
+                style={{background:pink,color:"white",border:"none",borderRadius:8,padding:"11px 24px",fontSize:14,fontWeight:500,cursor:"pointer"}}>
+                📄 Exportar los {(secuencia.dias||[]).length} días en un PDF
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // ── RENDER GENERATOR ──────────────────────────────────────────────────────
   if (view==="gen") return (
